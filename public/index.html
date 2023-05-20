@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <!-- Styles for the application -->
+    <style>
+        /* Global styles */
+        *{
+            margin: 0px;
+            overflow: hidden;
+        }
+        
+        /* Body background color */
+        body {
+            background-color: black;
+        }
+        
+        /* Canvas styles */
+        .canvas{
+            background-color: grey;
+            height: 90vh;
+            width: 100vw;
+            margin: 0px;
+        }
+        
+        /* Draggable elements styles */
+        .draggable {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: yellow;
+            border-radius: 50%;
+            cursor: move;
+            text-align: center;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+        
+        .controls{
+            position: relative;
+            bottom: 0px;
+            background-color: lightblue;
+            width: 1000px;
+            height: 400px;
+        }
+
+        #progress{
+            width: 500px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Canvas element -->
+    <canvas class="canvas" id="canvas"></canvas>
+    
+    <!-- Draggable Elements -->
+    <div id="nodes"></div>
+    
+    <div class="controls">
+        <button class="button" id="drawLinesButton">Draw Lines</button>
+        <button class="button" id="drawArcButton" onclick="drawingArc = !drawingArc">Draw Arc</button>
+        <input id="progress" type="range" min="0" max="1" step="0.001">
+        <p id="progress-num"></p>
+        <input id="numOfNodes" type="number">
+        <button onclick="generateNodes()">Generate</button>
+    </div>
+    
+    <script>
+        // Initialization of elements and contexts
+        var drawLinesButton = document.getElementById("drawLinesButton");
+        var canvas = document.getElementById("canvas");
+        var ctx = canvas.getContext("2d");
+        var progress = document.getElementById("progress");
+        var progressNum = document.getElementById("progress-num");
+        var drawArcButton = document.getElementById("drawArcButton");
+        var nodes = document.getElementById("nodes");
+        var numOfNodesField = document.getElementById("numOfNodes");
+
+        // Colors
+        const BASE_LINE_COLOR = "red";
+        const BASE_LINE_OPACITY = 1;
+        const INTER_POINT_COLOR = "yellow"
+        const INTER_POINT_OPACITY = 1;
+        const INTER_LINE_COLOR = "blue";
+        const INTER_LINE_OPACITY = 0.25;
+        const BEZIER_CURVE_COLOR = "purple";
+        const BEZIER_CURVE_OPACITY = 1;
+        const FINAL_POINT_COLOR = "green";
+        const FINAL_POINT_OPACITY = 1;
+        
+        // Variables for cursor and elements positions
+        var offsetX = 0;
+        var offsetY = 0;
+        var startX = 0;
+        var startY = 0;
+        var draggedElement; // Current dragged element
+        var positions = [];
+        var drawingArc = false;
+        
+        // Drag events listeners for draggable elements
+        // draggableElement1.addEventListener("mousedown", dragStart);
+        // draggableElement2.addEventListener("mousedown", dragStart);
+        // draggableElement3.addEventListener("mousedown", dragStart);
+        
+        // Button click event listener
+        drawLinesButton.addEventListener("click", drawLines);
+        
+        // Function to start dragging
+        function dragStart(event) {
+            draggedElement = this;
+            startX = event.clientX;
+            startY = event.clientY;
+            offsetX = startX - this.getBoundingClientRect().left;
+            offsetY = startY - this.getBoundingClientRect().top;
+            
+            document.addEventListener("mousemove", drag);
+            document.addEventListener("mouseup", dragEnd);
+        }
+        
+        // Function for dragging
+        function drag(event) {
+            event.preventDefault();
+            
+            var x = event.clientX - offsetX;
+            var y = event.clientY - offsetY;
+            
+            draggedElement.style.left = x + "px";
+            draggedElement.style.top = y + "px";
+        }
+        
+        // Function to stop dragging
+        function dragEnd() {
+            document.removeEventListener("mousemove", drag);
+            document.removeEventListener("mouseup", dragEnd);
+        }
+        
+        // Function to draw lines
+        function drawLines(){
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            getDotPos();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = BASE_LINE_COLOR;
+            ctx.globalAlpha = BASE_LINE_OPACITY;
+            ctx.beginPath();
+            ctx.moveTo(positions[0].x, positions[0].y);
+            for(let i = 1; i < positions.length; i++){
+                ctx.lineTo(positions[i].x, positions[i].y);
+            }
+            ctx.stroke();
+        }
+        
+        function drawInterPoints(points) {
+            if (points.length < 1) {
+                return;
+            }
+            
+            var interPoints = [];
+            for (let i = 0; i < points.length - 1; i++) {
+                var px = (1 - progress.value) * points[i].x + progress.value * points[i + 1].x;
+                var py = (1 - progress.value) * points[i].y + progress.value * points[i + 1].y;
+                ctx.globalAlpha = INTER_POINT_OPACITY;
+                ctx.strokeStyle = INTER_POINT_COLOR;
+                ctx.beginPath();
+                ctx.arc(px, py, 5, 0, 2 * Math.PI, false);
+                ctx.stroke();
+                interPoints.push({ x: px, y: py });
+            }
+            
+            drawInterPoints(interPoints);
+        }
+        
+        function drawInterLines() {
+            var numPoints = positions.length;
+            if (numPoints < 2) {
+                return;
+            }
+            
+            ctx.lineWidth = 3;
+            ctx.globalAlpha = INTER_LINE_OPACITY;
+            ctx.strokeStyle = INTER_LINE_COLOR;
+            
+            var interPoints = [];
+            for (let i = 0; i < numPoints - 1; i++) {
+                var px1 = (1 - progress.value) * positions[i].x + progress.value * positions[i + 1].x;
+                var py1 = (1 - progress.value) * positions[i].y + progress.value * positions[i + 1].y;
+                
+                interPoints.push({ x: px1, y: py1 });
+                
+                if(i < numPoints - 2) {
+                    var px2 = (1 - progress.value) * positions[i + 1].x + progress.value * positions[i + 2].x;
+                    var py2 = (1 - progress.value) * positions[i + 1].y + progress.value * positions[i + 2].y;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(px1, py1);
+                    ctx.lineTo(px2, py2);
+                    ctx.stroke();
+                }
+            }
+            
+            drawInterLinesRecursive(interPoints);
+        }
+        
+        function drawInterLinesRecursive(points) {
+            var numPoints = points.length;
+            if (numPoints < 2) {
+                return;
+            }
+            
+            var interPoints = [];
+            for (let i = 0; i < numPoints - 1; i++) {
+                var px1 = (1 - progress.value) * points[i].x + progress.value * points[i + 1].x;
+                var py1 = (1 - progress.value) * points[i].y + progress.value * points[i + 1].y;
+                interPoints.push({ x: px1, y: py1 });
+                
+                if(i < numPoints - 2) {
+                    var px2 = (1 - progress.value) * points[i + 1].x + progress.value * points[i + 2].x;
+                    var py2 = (1 - progress.value) * points[i + 1].y + progress.value * points[i + 2].y;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(px1, py1);
+                    ctx.lineTo(px2, py2);
+                    ctx.stroke();
+                }
+            }
+            
+            // If we're down to the final midpoint, change the color.
+            if (interPoints.length == 1) {
+                ctx.globalAlpha = FINAL_POINT_OPACITY;
+                ctx.strokeStyle = FINAL_POINT_COLOR; // or whatever color you want
+                ctx.beginPath();
+                ctx.arc(interPoints[0].x, interPoints[0].y, 5, 0, 2 * Math.PI, false);
+                ctx.stroke();
+                ctx.globalAlpha = 0.5;
+                ctx.strokeStyle = "blue"; // set the color back for the next frame
+            }
+            
+            if(interPoints.length > 1) {
+                drawInterLinesRecursive(interPoints);
+            }
+        }
+        
+        function calculateResultantPoint(points) {
+            var numPoints = points.length;
+            if (numPoints < 2) {
+                return points[0];
+            }
+            
+            var interPoints = [];
+            for (let i = 0; i < numPoints - 1; i++) {
+                var px1 = (1 - progress.value) * points[i].x + progress.value * points[i + 1].x;
+                var py1 = (1 - progress.value) * points[i].y + progress.value * points[i + 1].y;
+                interPoints.push({ x: px1, y: py1 });
+            }
+            
+            return calculateResultantPoint(interPoints);
+        }
+        
+        function calculateBezierPoint(t, points) {
+            if (points.length == 1) return points[0];
+            var newPoints = [];
+            for (let i = 0; i < points.length - 1; i++) {
+                let x = (1 - t) * points[i].x + t * points[i + 1].x;
+                let y = (1 - t) * points[i].y + t * points[i + 1].y;
+                newPoints.push({ x: x, y: y });
+            }
+            return calculateBezierPoint(t, newPoints);
+        }
+        
+        // Function to draw resultant arc
+        function drawResultantArc() {
+            if(!drawingArc) return;
+            ctx.globalAlpha = BEZIER_CURVE_OPACITY;
+            ctx.strokeStyle = BEZIER_CURVE_COLOR;
+            ctx.beginPath();
+            for(let t = 0; t <= 1; t += 0.001){
+                let point = calculateBezierPoint(t, positions);
+                ctx.lineTo(point.x, point.y);
+            }
+            ctx.stroke();
+        }
+        
+        // Function to get draggable elements position
+        function getDotPos(){
+            var children = nodes.children;
+            for(var i=0; i<children.length; i++){
+                var child = children[i];
+                positions[i] = {x: parseInt(child.style.left.replace("px", "")) + 10, y: parseInt(child.style.top.replace("px", "")) + 10}
+            }
+        }
+        
+        // Function to resize the canvas to display size
+        function resizeCanvasToDisplaySize(canvas) {
+            const displayWidth  = canvas.clientWidth;
+            const displayHeight = canvas.clientHeight;
+            
+            const needResize = canvas.width  !== displayWidth ||
+            canvas.height !== displayHeight;
+            
+            if (needResize) {
+                canvas.width  = displayWidth;
+                canvas.height = displayHeight;
+            }
+            
+            return needResize;
+        }
+        
+        function generateNodes(){
+            for(let i = 0; i < parseInt(numOfNodesField.value); i++){
+                var div = document.createElement("div");
+                div.id = "draggableElement" + i;
+                div.className = "draggable";
+                div.innerHTML = i;
+                div.style.top = (100 * Math.floor(i / 8)) + "px"
+                div.style.left = (100 * (i % 8)) + "px";
+                div.addEventListener("mousedown", dragStart);
+                nodes.append(div);
+            }
+        }
+        
+        // Update function for the loop
+        function update(){
+            drawLines();
+            drawInterPoints(positions);
+            drawInterLines();
+            progressNum.innerHTML = `${Math.round(progress.value * 1000)/10}%`;
+            if(drawingArc){
+                drawResultantArc();
+            }
+        }
+        
+        // Init
+        resizeCanvasToDisplaySize(canvas);
+        setInterval(update, 16.66667);
+    </script>
+</body>
+</html>
